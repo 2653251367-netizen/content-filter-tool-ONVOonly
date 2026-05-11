@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>内容筛选分析工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --success: #3dd68c;
+    --warning: #f5a623;
+    --danger: #f75f5f;
+    --text: #e8eaf6;
+    --text2: #8b90b8;
+    --text3: #555a7a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans SC', sans-serif;
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #1a1d27 0%, #0f1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header-icon {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+  .header p { font-size: 13px; color: var(--text2); margin-top: 2px; }
+
+  /* Main layout */
+  .main { display: flex; min-height: calc(100vh - 89px); }
+
+  /* Sidebar */
+  .sidebar {
+    width: 260px; min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+  }
+  .sidebar-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 2px;
+    color: var(--text3); text-transform: uppercase;
+    padding: 0 20px 12px;
+  }
+  .step-item {
+    padding: 12px 20px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: default;
+    border-left: 3px solid transparent;
+    transition: all 0.2s;
+  }
+  .step-item.active { border-left-color: var(--accent); background: rgba(79,142,247,0.07); }
+  .step-item.done { border-left-color: var(--success); }
+  .step-item.locked { opacity: 0.4; }
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+    background: var(--surface2); border: 2px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .step-item.active .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .step-item.done .step-num { background: var(--success); border-color: var(--success); color: #fff; }
+  .step-info { flex: 1; }
+  .step-label { font-size: 13px; font-weight: 500; }
+  .step-status { font-size: 11px; color: var(--text2); margin-top: 2px; }
+
+  /* Stats bar */
+  .stats-bar {
+    margin: 20px;
+    padding: 12px 16px;
+    background: var(--surface2);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .stats-bar .stat { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .stats-bar .stat:last-child { margin-bottom: 0; }
+  .stats-bar .stat span { color: var(--accent); font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+
+  /* Content area */
+  .content { flex: 1; padding: 32px 40px; overflow-y: auto; }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 24px;
+  }
+  .card-title {
+    font-size: 16px; font-weight: 700;
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 20px;
+  }
+  .card-title .tag {
+    font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px;
+    background: rgba(79,142,247,0.15); color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(255,255,255,0.01);
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: rgba(79,142,247,0.05); }
+  .upload-zone .upload-icon { font-size: 40px; margin-bottom: 12px; }
+  .upload-zone p { color: var(--text2); font-size: 14px; }
+  .upload-zone strong { color: var(--text); }
+  #fileInput { display: none; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 22px; border-radius: 8px;
+    font-size: 14px; font-weight: 600;
+    border: none; cursor: pointer;
+    transition: all 0.15s; font-family: 'Noto Sans SC', sans-serif;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #fff;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(79,142,247,0.4); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-success { background: var(--success); color: #0f1117; }
+  .btn-success:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(61,214,140,0.4); }
+  .btn-success:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  .btn-outline {
+    background: transparent; color: var(--text2);
+    border: 1px solid var(--border);
+  }
+  .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm { padding: 7px 14px; font-size: 12px; }
+
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+
+  /* Form controls */
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; display: block; font-weight: 500; }
+  .form-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 9px 14px;
+    font-size: 14px; font-family: 'Noto Sans SC', sans-serif;
+    transition: border-color 0.2s; width: 100%;
+  }
+  .form-input:focus { outline: none; border-color: var(--accent); }
+  .form-input[type=number] { width: 100px; }
+  .form-row { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
+
+  /* API Key input */
+  .api-key-row { display: flex; gap: 8px; }
+  .api-key-row .form-input { flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+
+  /* Progress */
+  .progress-wrap { margin: 12px 0; }
+  .progress-bar {
+    height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 99px; transition: width 0.3s;
+  }
+  .progress-text { font-size: 12px; color: var(--text2); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
+
+  /* Log */
+  .log-box {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    max-height: 180px; overflow-y: auto; line-height: 1.8;
+  }
+  .log-info { color: var(--text2); }
+  .log-success { color: var(--success); }
+  .log-warning { color: var(--warning); }
+  .log-error { color: var(--danger); }
+
+  /* Result table */
+  .table-wrap { overflow-x: auto; margin-top: 16px; border-radius: 10px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: var(--surface2); color: var(--text2); font-weight: 600;
+    padding: 10px 14px; text-align: left; white-space: nowrap;
+    border-bottom: 1px solid var(--border); font-size: 12px;
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid rgba(46,51,80,0.5); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(79,142,247,0.04); }
+  .td-truncate { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+  }
+  .badge-danger { background: rgba(247,95,95,0.15); color: var(--danger); }
+  .badge-warning { background: rgba(245,166,35,0.15); color: var(--warning); }
+  .badge-success { background: rgba(61,214,140,0.15); color: var(--success); }
+  .badge-accent { background: rgba(79,142,247,0.15); color: var(--accent); }
+
+  /* Alert */
+  .alert {
+    padding: 12px 16px; border-radius: 8px; font-size: 13px;
+    display: flex; gap: 10px; align-items: flex-start; margin-bottom: 16px;
+  }
+  .alert-info { background: rgba(79,142,247,0.1); border: 1px solid rgba(79,142,247,0.25); color: #a0b8f5; }
+  .alert-success { background: rgba(61,214,140,0.1); border: 1px solid rgba(61,214,140,0.25); color: #7ae8b8; }
+  .alert-warning { background: rgba(245,166,35,0.1); border: 1px solid rgba(245,166,35,0.25); color: #f5c842; }
+
+  /* Section */
+  .section-title { font-size: 13px; color: var(--text2); font-weight: 600; margin-bottom: 12px; letter-spacing: 0.5px; }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+  /* Hidden */
+  .hidden { display: none !important; }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    animation: spin 0.7s linear infinite; display: inline-block;
+  }
+
+  /* Score bar */
+  .score-bar { display: flex; align-items: center; gap: 8px; }
+  .score-fill {
+    height: 4px; border-radius: 99px;
+    background: linear-gradient(90deg, var(--accent), var(--success));
+  }
+  .score-val { font-size: 11px; color: var(--text2); font-family: 'JetBrains Mono', monospace; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface2); padding: 4px; border-radius: 10px; width: fit-content; }
+  .tab { padding: 7px 18px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; color: var(--text2); transition: all 0.15s; border: none; background: none; font-family: 'Noto Sans SC', sans-serif; }
+  .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+
+  .count-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 12px; font-size: 13px;
+    font-family: 'JetBrains Mono', monospace; color: var(--accent); font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-icon">🔍</div>
+  <div>
+    <h1>内容筛选分析工具</h1>
+    <p>上传 Excel 表格，四步完成数据清洗与精品内容挖掘</p>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-title">处理流程</div>
+
+    <div class="step-item active" id="nav0">
+      <div class="step-num">0</div>
+      <div class="step-info">
+        <div class="step-label">上传文件</div>
+        <div class="step-status" id="nav0-status">等待上传</div>
+      </div>
+    </div>
+    <div class="step-item locked" id="nav1">
+      <div class="step-num">1</div>
+      <div class="step-info">
+        <div class="step-label">基本要求筛选</div>
+        <div class="step-status" id="nav1-status">待执行</div>
+      </div>
+    </div>
+    <div class="step-item locked" id="nav2">
+      <div class="step-num">2</div>
+      <div class="step-info">
+        <div class="step-label">去重筛选</div>
+        <div class="step-status" id="nav2-status">待执行</div>
+      </div>
+    </div>
+    <div class="step-item locked" id="nav3">
+      <div class="step-num">3</div>
+      <div class="step-info">
+        <div class="step-label">生成获奖名单</div>
+        <div class="step-status" id="nav3-status">待执行</div>
+      </div>
+    </div>
+    <div class="step-item locked" id="nav4">
+      <div class="step-num">4</div>
+      <div class="step-info">
+        <div class="step-label">精品奖筛选</div>
+        <div class="step-status" id="nav4-status">待执行</div>
+      </div>
+    </div>
+
+    <div class="stats-bar" id="statsBar">
+      <div class="stat">总数据：<span id="statTotal">-</span> 条</div>
+      <div class="stat">已过滤：<span id="statFiltered">-</span> 条</div>
+      <div class="stat">有效数据：<span id="statValid">-</span> 条</div>
+      <div class="stat">精品奖：<span id="statPremium">-</span> 条</div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content">
+
+    <!-- Step 0: Upload -->
+    <div id="panel0">
+      <div class="card">
+        <div class="card-title">📁 上传 Excel 文件 <span class="tag">STEP 0</span></div>
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">📊</div>
+          <p><strong>点击选择文件</strong>，或将文件拖拽至此处</p>
+          <p style="margin-top:6px;font-size:12px;">支持 .xlsx / .xls 格式</p>
+        </div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls">
+        <div id="fileInfo" class="hidden" style="margin-top:16px;">
+          <div class="alert alert-success">
+            <span>✅</span>
+            <div>
+              <strong id="fileName"></strong>
+              <div id="fileStats" style="margin-top:4px;font-size:12px;opacity:0.8;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btnToStep1" disabled onclick="goToStep(1)">
+            下一步：基本要求筛选 →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 1: Basic filter -->
+    <div id="panel1" class="hidden">
+      <div class="card">
+        <div class="card-title">🔎 第一步：基本要求筛选 <span class="tag">STEP 1</span></div>
+
+        <div class="alert alert-info">
+          <span>ℹ️</span>
+          <div>满足以下<strong>任意一个条件</strong>即为合格数据，进入下一步；两者均不满足则在备注列标注「不符合话题基本要求」。</div>
+        </div>
+
+        <div class="section-title">筛选条件设置</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">条件 A — 最小文本字数（≥）</label>
+            <input type="number" class="form-input" id="minWords" value="50" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">条件 A — 最小图片数量（≥）</label>
+            <input type="number" class="form-input" id="minImages" value="2" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">条件 B — 最小视频时长（≥ 秒）</label>
+            <input type="number" class="form-input" id="minVideo" value="15" min="1">
+          </div>
+        </div>
+
+        <div id="step1Log" class="log-box hidden"></div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" onclick="goToStep(0)">← 返回</button>
+          <button class="btn btn-primary" id="btnStep1" onclick="runStep1()">
+            ▶ 开始筛选
+          </button>
+        </div>
+      </div>
+
+      <div id="step1Result" class="hidden">
+        <div class="card">
+          <div class="card-title">📊 筛选结果预览</div>
+          <div id="step1Summary"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="goToStep(2)">下一步：去重筛选 →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Dedup -->
+    <div id="panel2" class="hidden">
+      <div class="card">
+        <div class="card-title">🔄 第二步：去重筛选 <span class="tag">STEP 2</span></div>
+
+        <div class="alert alert-info">
+          <span>ℹ️</span>
+          <div>
+            <strong>用户去重</strong>：同一发布者ID只保留热度2最高的一条，其余标注「用户重复发布」。<br>
+            <strong>内容去重</strong>：文本相似度 &gt; 90% 的组只保留发布时间最早的一条，其余标注「抄袭」。
+          </div>
+        </div>
+
+        <div id="step2Log" class="log-box hidden"></div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" onclick="goToStep(1)">← 返回</button>
+          <button class="btn btn-primary" id="btnStep2" onclick="runStep2()">
+            ▶ 开始去重
+          </button>
+        </div>
+      </div>
+
+      <div id="step2Result" class="hidden">
+        <div class="card">
+          <div class="card-title">📊 去重结果预览</div>
+          <div id="step2Summary"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="goToStep(3)">下一步：生成获奖名单 →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Award list -->
+    <div id="panel3" class="hidden">
+      <div class="card">
+        <div class="card-title">🏆 第三步：生成获奖名单 <span class="tag">STEP 3</span></div>
+
+        <div class="alert alert-info">
+          <span>ℹ️</span>
+          <div>筛选所有无备注的合格数据，按「热度2」降序排列，最多保留 <strong>300 条</strong>，生成可下载的获奖名单表格。</div>
+        </div>
+
+        <div id="step3Log" class="log-box hidden"></div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" onclick="goToStep(2)">← 返回</button>
+          <button class="btn btn-primary" id="btnStep3" onclick="runStep3()">
+            ▶ 生成获奖名单
+          </button>
+        </div>
+      </div>
+
+      <div id="step3Result" class="hidden">
+        <div class="card">
+          <div class="card-title">📊 获奖名单预览</div>
+          <div id="step3Summary"></div>
+          <div class="btn-row" id="step3Btns"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4: Premium -->
+    <div id="panel4" class="hidden">
+      <div class="card">
+        <div class="card-title">⭐ 第四步：精品奖筛选（AI 分析）<span class="tag">STEP 4</span></div>
+
+        <div class="alert alert-warning">
+          <span>⚠️</span>
+          <div>此步骤调用 <strong>DeepSeek API</strong> 对每条内容进行文本质量评分，请确保 API Key 正确且余额充足。分析将<strong>批量处理</strong>（每批10条），请耐心等待。</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">DeepSeek API Key</label>
+          <div class="api-key-row">
+            <input type="password" class="form-input" id="apiKey" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx">
+            <button class="btn btn-outline btn-sm" onclick="toggleApiKey()">显示</button>
+          </div>
+        </div>
+
+        <div id="step4QuotaInfo" style="margin-bottom:16px;"></div>
+
+        <div id="step4Log" class="log-box hidden"></div>
+        <div id="step4Progress" class="hidden">
+          <div class="progress-wrap">
+            <div class="progress-bar"><div class="progress-fill" id="step4Bar" style="width:0%"></div></div>
+            <div class="progress-text" id="step4BarText">0 / 0</div>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" onclick="goToStep(3)">← 返回</button>
+          <button class="btn btn-primary" id="btnStep4" onclick="runStep4()">
+            ▶ 开始精品奖筛选
+          </button>
+        </div>
+      </div>
+
+      <div id="step4Result" class="hidden">
+        <div class="card">
+          <div class="card-title">⭐ 精品奖结果</div>
+          <div id="step4Summary"></div>
+          <div class="btn-row" id="step4Btns"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ==================== State ====================
+let rawData = [];        // all rows as objects
+let headers = [];        // column names
+let processedData = [];  // with 备注 column added
+let awardList = [];      // step3 result (<=300)
+let premiumList = [];    // step4 result
+
+const COL = {
+  WORDS: '发布文本内容字数',
+  IMAGES: '发布图片数量',
+  VIDEO: '发布视频时长',
+  AUTHOR_ID: '文章发布者ID',
+  HEAT: '热度2',
+  CONTENT: '发布文本内容',
+  TOPIC: '首话题名称',
+  PUB_TIME: '发布时间',
+  NOTE: '备注'
+};
+
+// ==================== Upload ====================
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+function handleFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    if (!json.length) { alert('表格为空，请重新上传'); return; }
+    headers = Object.keys(json[0]);
+    rawData = json;
+    // Init processedData with 备注 column
+    processedData = rawData.map(row => ({ ...row, [COL.NOTE]: '' }));
+
+    document.getElementById('fileInfo').classList.remove('hidden');
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileStats').textContent = `共 ${json.length} 条数据，${headers.length} 列`;
+    document.getElementById('btnToStep1').disabled = false;
+    updateNav(0, 'done', `已加载 ${json.length} 条`);
+    updateStats(json.length, 0, json.length, '-');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ==================== Navigation ====================
+function goToStep(step) {
+  for (let i = 0; i <= 4; i++) {
+    document.getElementById(`panel${i}`).classList.add('hidden');
+  }
+  document.getElementById(`panel${step}`).classList.remove('hidden');
+
+  // Update quota info on step4
+  if (step === 4 && awardList.length > 0) updateQuotaInfo();
+}
+
+function updateNav(step, state, statusText) {
+  const el = document.getElementById(`nav${step}`);
+  el.className = `step-item ${state}`;
+  if (statusText) document.getElementById(`nav${step}-status`).textContent = statusText;
+}
+
+function unlockNav(step) {
+  const el = document.getElementById(`nav${step}`);
+  el.classList.remove('locked');
+}
+
+function updateStats(total, filtered, valid, premium) {
+  document.getElementById('statTotal').textContent = total === '-' ? '-' : total;
+  document.getElementById('statFiltered').textContent = filtered === '-' ? '-' : filtered;
+  document.getElementById('statValid').textContent = valid === '-' ? '-' : valid;
+  document.getElementById('statPremium').textContent = premium === '-' ? '-' : premium;
+}
+
+// ==================== Step 1 ====================
+function runStep1() {
+  const minWords = parseInt(document.getElementById('minWords').value) || 50;
+  const minImages = parseInt(document.getElementById('minImages').value) || 2;
+  const minVideo = parseInt(document.getElementById('minVideo').value) || 15;
+
+  const logEl = document.getElementById('step1Log');
+  logEl.classList.remove('hidden');
+  logEl.innerHTML = '';
+
+  let passCount = 0, failCount = 0;
+
+  processedData.forEach(row => {
+    const words = parseFloat(row[COL.WORDS]) || 0;
+    const images = parseFloat(row[COL.IMAGES]) || 0;
+    const video = parseFloat(row[COL.VIDEO]) || 0;
+
+    const condA = words >= minWords && images >= minImages;
+    const condB = video >= minVideo;
+
+    if (!condA && !condB) {
+      addNote(row, '不符合话题基本要求');
+      failCount++;
+    } else {
+      passCount++;
+    }
+  });
+
+  log(logEl, `✅ 条件A：文本字数 ≥ ${minWords} 且 图片数量 ≥ ${minImages}`, 'info');
+  log(logEl, `✅ 条件B：视频时长 ≥ ${minVideo} 秒`, 'info');
+  log(logEl, `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+  log(logEl, `📊 总计：${processedData.length} 条`, 'info');
+  log(logEl, `✔ 合格：${passCount} 条`, 'success');
+  log(logEl, `✘ 不合格（已标注备注）：${failCount} 条`, failCount > 0 ? 'warning' : 'info');
+
+  const summary = document.getElementById('step1Summary');
+  summary.innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="count-chip">总计 ${processedData.length} 条</div>
+      <div class="count-chip" style="color:var(--success)">合格 ${passCount} 条</div>
+      <div class="count-chip" style="color:var(--danger)">不合格 ${failCount} 条</div>
+    </div>
+  `;
+
+  document.getElementById('step1Result').classList.remove('hidden');
+  updateNav(1, 'done', `合格 ${passCount} / ${processedData.length}`);
+  unlockNav(2);
+  updateStats(processedData.length, failCount, passCount, '-');
+}
+
+// ==================== Step 2 ====================
+async function runStep2() {
+  const btn = document.getElementById('btnStep2');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> 处理中...';
+
+  const logEl = document.getElementById('step2Log');
+  logEl.classList.remove('hidden');
+  logEl.innerHTML = '';
+
+  // Only operate on rows without disqualifying notes
+  const eligible = processedData.filter(r => !r[COL.NOTE].includes('不符合话题基本要求'));
+
+  log(logEl, `📋 进入去重的有效数据：${eligible.length} 条`, 'info');
+
+  // 2-1 User dedup
+  let userDupCount = 0;
+  const authorGroups = {};
+  eligible.forEach(row => {
+    const id = String(row[COL.AUTHOR_ID] || '').trim();
+    if (!authorGroups[id]) authorGroups[id] = [];
+    authorGroups[id].push(row);
+  });
+
+  Object.values(authorGroups).forEach(group => {
+    if (group.length <= 1) return;
+    // sort by heat2 desc
+    group.sort((a, b) => (parseFloat(b[COL.HEAT]) || 0) - (parseFloat(a[COL.HEAT]) || 0));
+    // keep first, mark rest
+    for (let i = 1; i < group.length; i++) {
+      addNote(group[i], '用户重复发布');
+      userDupCount++;
+    }
+  });
+
+  log(logEl, `👤 用户去重：发现 ${userDupCount} 条重复发布，已标注备注`, userDupCount > 0 ? 'warning' : 'success');
+
+  // 2-2 Content dedup
+  await new Promise(r => setTimeout(r, 50)); // yield to UI
+
+  const afterUserDedup = processedData.filter(r => !r[COL.NOTE]);
+  log(logEl, `📝 进入内容去重的数据：${afterUserDedup.length} 条`, 'info');
+  log(logEl, `⏳ 计算文本相似度中（可能需要几秒）...`, 'info');
+
+  await new Promise(r => setTimeout(r, 50));
+
+  let contentDupCount = 0;
+  const markedAsPlagi = new Set();
+
+  for (let i = 0; i < afterUserDedup.length; i++) {
+    if (markedAsPlagi.has(i)) continue;
+    const textA = String(afterUserDedup[i][COL.CONTENT] || '');
+    for (let j = i + 1; j < afterUserDedup.length; j++) {
+      if (markedAsPlagi.has(j)) continue;
+      const textB = String(afterUserDedup[j][COL.CONTENT] || '');
+      const sim = similarity(textA, textB);
+      if (sim > 0.9) {
+        // keep earlier time
+        const timeA = String(afterUserDedup[i][COL.PUB_TIME] || '');
+        const timeB = String(afterUserDedup[j][COL.PUB_TIME] || '');
+        if (timeA <= timeB) {
+          addNote(afterUserDedup[j], '抄袭');
+          markedAsPlagi.add(j);
+        } else {
+          addNote(afterUserDedup[i], '抄袭');
+          markedAsPlagi.add(i);
+        }
+        contentDupCount++;
+      }
+    }
+    // yield every 50 rows
+    if (i % 50 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  log(logEl, `📄 内容去重：发现 ${contentDupCount} 条高度相似内容（相似度>90%），已标注「抄袭」`, contentDupCount > 0 ? 'warning' : 'success');
+
+  const finalValid = processedData.filter(r => !r[COL.NOTE]).length;
+  const totalFiltered = processedData.filter(r => r[COL.NOTE]).length;
+
+  log(logEl, `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+  log(logEl, `✔ 去重后有效数据：${finalValid} 条`, 'success');
+  log(logEl, `✘ 累计过滤数据：${totalFiltered} 条`, 'info');
+
+  const summary = document.getElementById('step2Summary');
+  summary.innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="count-chip">用户重复 ${userDupCount} 条</div>
+      <div class="count-chip">疑似抄袭 ${contentDupCount} 条</div>
+      <div class="count-chip" style="color:var(--success)">有效数据 ${finalValid} 条</div>
+    </div>
+  `;
+
+  document.getElementById('step2Result').classList.remove('hidden');
+  updateNav(2, 'done', `有效 ${finalValid} 条`);
+  unlockNav(3);
+  updateStats(processedData.length, totalFiltered, finalValid, '-');
+
+  btn.disabled = false;
+  btn.innerHTML = '▶ 开始去重';
+}
+
+// ==================== Step 3 ====================
+function runStep3() {
+  const logEl = document.getElementById('step3Log');
+  logEl.classList.remove('hidden');
+  logEl.innerHTML = '';
+
+  let valid = processedData.filter(r => !r[COL.NOTE]);
+  log(logEl, `📋 有效数据（无备注）：${valid.length} 条`, 'info');
+
+  // Sort by heat2 desc
+  valid.sort((a, b) => (parseFloat(b[COL.HEAT]) || 0) - (parseFloat(a[COL.HEAT]) || 0));
+
+  let truncated = false;
+  if (valid.length > 300) {
+    log(logEl, `⚠️ 数据超过300条，按热度2倒序截取前300条`, 'warning');
+    valid = valid.slice(0, 300);
+    truncated = true;
+  }
+
+  awardList = valid;
+  log(logEl, `✅ 获奖名单生成完成：${awardList.length} 条`, 'success');
+
+  const maxPremium = getPremiumQuota(awardList.length);
+  log(logEl, `⭐ 根据数量规则，精品奖上限：${maxPremium} 条`, 'info');
+
+  const summaryEl = document.getElementById('step3Summary');
+  summaryEl.innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="count-chip">获奖名单 ${awardList.length} 条</div>
+      ${truncated ? `<div class="count-chip" style="color:var(--warning)">已截取前300条</div>` : ''}
+      <div class="count-chip" style="color:var(--accent)">精品奖上限 ${maxPremium} 条</div>
+    </div>
+    ${buildPreviewTable(awardList.slice(0, 10), ['发布标题', COL.CONTENT, COL.HEAT, COL.NOTE])}
+    ${awardList.length > 10 ? `<p style="font-size:12px;color:var(--text2);margin-top:8px;">仅展示前10条预览</p>` : ''}
+  `;
+
+  const btnsEl = document.getElementById('step3Btns');
+  btnsEl.innerHTML = `
+    <button class="btn btn-success" onclick="downloadAwardList()">⬇ 下载获奖名单.xlsx</button>
+    <button class="btn btn-primary" onclick="goToStep(4)">下一步：精品奖筛选 →</button>
+  `;
+
+  document.getElementById('step3Result').classList.remove('hidden');
+  updateNav(3, 'done', `${awardList.length} 条`);
+  unlockNav(4);
+  updateStats(processedData.length, processedData.filter(r => r[COL.NOTE]).length, awardList.length, '-');
+}
+
+// ==================== Step 4 ====================
+function updateQuotaInfo() {
+  const quota = getPremiumQuota(awardList.length);
+  document.getElementById('step4QuotaInfo').innerHTML = `
+    <div class="alert alert-info">
+      <span>📊</span>
+      <div>获奖名单共 <strong>${awardList.length}</strong> 条数据，根据数量规则，精品奖最多筛选 <strong>${quota}</strong> 条。</div>
+    </div>
+  `;
+}
+
+async function runStep4() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  if (!apiKey) { alert('请输入 DeepSeek API Key'); return; }
+
+  const btn = document.getElementById('btnStep4');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> AI 分析中...';
+
+  const logEl = document.getElementById('step4Log');
+  logEl.classList.remove('hidden');
+  logEl.innerHTML = '';
+
+  const progressEl = document.getElementById('step4Progress');
+  progressEl.classList.remove('hidden');
+
+  const maxPremium = getPremiumQuota(awardList.length);
+  log(logEl, `📋 待分析数据：${awardList.length} 条，精品奖上限：${maxPremium} 条`, 'info');
+  log(logEl, `🤖 开始批量 AI 评分（每批10条）...`, 'info');
+
+  const batchSize = 10;
+  const scores = new Array(awardList.length).fill(0);
+
+  for (let i = 0; i < awardList.length; i += batchSize) {
+    const batch = awardList.slice(i, Math.min(i + batchSize, awardList.length));
+    const batchIdx = Math.floor(i / batchSize) + 1;
+    const totalBatches = Math.ceil(awardList.length / batchSize);
+
+    log(logEl, `⏳ 第 ${batchIdx}/${totalBatches} 批，正在分析第 ${i+1}~${i+batch.length} 条...`, 'info');
+
+    try {
+      const result = await scoreBatch(batch, apiKey);
+      result.forEach((score, idx) => { scores[i + idx] = score; });
+      log(logEl, `✅ 第 ${batchIdx} 批完成，评分：${result.map(s=>s.toFixed(1)).join(', ')}`, 'success');
+    } catch (err) {
+      log(logEl, `❌ 第 ${batchIdx} 批失败：${err.message}，将使用默认分数0`, 'error');
+    }
+
+    const pct = Math.round((i + batch.length) / awardList.length * 100);
+    document.getElementById('step4Bar').style.width = pct + '%';
+    document.getElementById('step4BarText').textContent = `${i + batch.length} / ${awardList.length}`;
+    await new Promise(r => setTimeout(r, 200));
+  }
+
+  log(logEl, `✅ AI 评分完成！开始综合排序...`, 'success');
+
+  // Normalize heat2
+  const heats = awardList.map(r => parseFloat(r[COL.HEAT]) || 0);
+  const maxHeat = Math.max(...heats) || 1;
+
+  // Combined score: 70% AI text quality, 30% heat2
+  const combined = awardList.map((row, i) => ({
+    row,
+    aiScore: scores[i],
+    heatNorm: (parseFloat(row[COL.HEAT]) || 0) / maxHeat * 10,
+    total: scores[i] * 0.7 + ((parseFloat(row[COL.HEAT]) || 0) / maxHeat * 10) * 0.3
+  }));
+
+  combined.sort((a, b) => b.total - a.total);
+
+  // Filter by quality threshold then take up to maxPremium
+  // Only include items where AI score >= 6 (decent quality)
+  const qualityPass = combined.filter(item => item.aiScore >= 6);
+  const selected = qualityPass.slice(0, maxPremium);
+
+  premiumList = selected.map(item => item.row);
+
+  // Mark premium in awardList
+  const premiumSet = new Set(premiumList);
+  awardList.forEach(row => {
+    if (premiumSet.has(row)) {
+      addNote(row, '精品奖');
+    }
+  });
+
+  log(logEl, `⭐ 精品奖最终入选：${premiumList.length} 条（质量评分>=6且综合排名靠前）`, 'success');
+
+  const summaryEl = document.getElementById('step4Summary');
+  summaryEl.innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;">
+      <div class="count-chip">获奖名单 ${awardList.length} 条</div>
+      <div class="count-chip" style="color:var(--success)">精品奖 ${premiumList.length} 条</div>
+      <div class="count-chip" style="color:var(--text2)">上限 ${maxPremium} 条</div>
+    </div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">筛选标准：AI文本质量评分（权重70%）+ 热度2归一化（权重30%），仅保留AI评分≥6的内容</p>
+    ${buildPreviewTable(premiumList.slice(0, 10), ['发布标题', COL.CONTENT, COL.TOPIC, COL.HEAT])}
+    ${premiumList.length > 10 ? `<p style="font-size:12px;color:var(--text2);margin-top:8px;">仅展示前10条预览</p>` : ''}
+  `;
+
+  const btnsEl = document.getElementById('step4Btns');
+  btnsEl.innerHTML = `
+    <button class="btn btn-success" onclick="downloadPremiumList()">⬇ 下载精品奖名单.xlsx</button>
+    <button class="btn btn-outline" onclick="downloadAwardList()">⬇ 重新下载获奖名单.xlsx（含精品奖标注）</button>
+  `;
+
+  document.getElementById('step4Result').classList.remove('hidden');
+  updateNav(4, 'done', `精品奖 ${premiumList.length} 条`);
+  updateStats(processedData.length, processedData.filter(r => r[COL.NOTE] && !r[COL.NOTE].includes('精品奖')).length, awardList.length, premiumList.length);
+
+  btn.disabled = false;
+  btn.innerHTML = '▶ 开始精品奖筛选';
+}
+
+async function scoreBatch(batch, apiKey) {
+  const items = batch.map((row, i) => ({
+    index: i + 1,
+    topic: String(row[COL.TOPIC] || '').trim(),
+    content: String(row[COL.CONTENT] || '').slice(0, 500)
+  }));
+
+  const prompt = `你是一位内容质量评审专家。请对以下每条内容进行评分（0-10分）。
+
+评分维度：
+1. 主题相关性：内容是否紧扣话题主题（权重40%）
+2. 真实性：内容是否真实、有个人经历感（权重30%）  
+3. 生动性与吸引力：文字是否生动、有画面感、引人入胜（权重30%）
+
+评分标准：
+- 9-10分：内容极佳，主题高度相关，真实生动，非常有吸引力
+- 7-8分：内容良好，基本符合要求
+- 5-6分：内容一般，有明显不足但可接受
+- 3-4分：内容较差，主题偏离或内容空洞
+- 0-2分：内容极差，严重偏题或无实质内容
+
+待评内容：
+${items.map(item => `[${item.index}] 话题：${item.topic}\n内容：${item.content}`).join('\n\n')}
+
+请严格只输出JSON格式，不要有任何其他文字：
+{"scores": [评分1, 评分2, ...]}`;
+
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+      max_tokens: 200
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.choices?.[0]?.message?.content || '';
+
+  try {
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+    const arr = parsed.scores || [];
+    return batch.map((_, i) => Math.min(10, Math.max(0, parseFloat(arr[i]) || 0)));
+  } catch {
+    return batch.map(() => 5);
+  }
+}
+
+// ==================== Download ====================
+function downloadAwardList() {
+  if (!awardList.length) { alert('请先完成第三步'); return; }
+  const data = awardList.map(row => {
+    const out = {};
+    headers.forEach(h => { out[h] = row[h]; });
+    out[COL.NOTE] = row[COL.NOTE] || '';
+    return out;
+  });
+  exportExcel(data, '获奖名单');
+}
+
+function downloadPremiumList() {
+  if (!premiumList.length) { alert('请先完成第四步'); return; }
+  const data = premiumList.map(row => {
+    const out = {};
+    headers.forEach(h => { out[h] = row[h]; });
+    out[COL.NOTE] = row[COL.NOTE] || '';
+    return out;
+  });
+  exportExcel(data, '精品奖名单');
+}
+
+function exportExcel(data, name) {
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, name);
+  XLSX.writeFile(wb, `${name}.xlsx`);
+}
+
+// ==================== Helpers ====================
+function addNote(row, note) {
+  const existing = row[COL.NOTE] || '';
+  if (existing.includes(note)) return;
+  row[COL.NOTE] = existing ? existing + '；' + note : note;
+}
+
+function log(el, msg, type = 'info') {
+  el.innerHTML += `<div class="log-${type}">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function getPremiumQuota(total) {
+  if (total <= 100) return 10;
+  if (total <= 280) return 20;
+  return 30;
+}
+
+function toggleApiKey() {
+  const input = document.getElementById('apiKey');
+  const btn = event.target;
+  if (input.type === 'password') { input.type = 'text'; btn.textContent = '隐藏'; }
+  else { input.type = 'password'; btn.textContent = '显示'; }
+}
+
+// Cosine similarity using character bigrams
+function similarity(a, b) {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+
+  const getBigrams = str => {
+    const bigrams = new Map();
+    for (let i = 0; i < str.length - 1; i++) {
+      const bg = str.slice(i, i + 2);
+      bigrams.set(bg, (bigrams.get(bg) || 0) + 1);
+    }
+    return bigrams;
+  };
+
+  const bigramsA = getBigrams(a);
+  const bigramsB = getBigrams(b);
+  let intersection = 0;
+
+  bigramsA.forEach((count, bg) => {
+    if (bigramsB.has(bg)) intersection += Math.min(count, bigramsB.get(bg));
+  });
+
+  const totalA = [...bigramsA.values()].reduce((s, v) => s + v, 0);
+  const totalB = [...bigramsB.values()].reduce((s, v) => s + v, 0);
+
+  return (2 * intersection) / (totalA + totalB);
+}
+
+function buildPreviewTable(rows, cols) {
+  if (!rows.length) return '<p style="color:var(--text2);font-size:13px;">暂无数据</p>';
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${rows.map(row => `<tr>${cols.map(c => {
+            const val = String(row[c] || '');
+            let display = val.length > 60 ? val.slice(0, 60) + '…' : val;
+            if (c === COL.NOTE && val) {
+              display = val.split('；').map(n => {
+                let cls = 'badge-warning';
+                if (n === '精品奖') cls = 'badge-success';
+                if (n === '不符合话题基本要求') cls = 'badge-danger';
+                if (n === '抄袭') cls = 'badge-danger';
+                if (n === '用户重复发布') cls = 'badge-warning';
+                return `<span class="badge ${cls}">${n}</span>`;
+              }).join(' ');
+            }
+            return `<td class="td-truncate" title="${val}">${display || '-'}</td>`;
+          }).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+</script>
+</body>
+</html>
